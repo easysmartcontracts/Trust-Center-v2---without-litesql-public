@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+@media print {
+  /* Set page margins for cleaner document layout */
+  @page {
+    margin: 1.5cm 1.5cm 1.5cm 1.5cm;
+    size: A4 portrait;
+  }
+
+  /* Reset body colors and dimensions for pure white/black high-contrast rendering */
+  body, html {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 11pt !important;
+    line-height: 1.6 !important;
+    font-family: system-ui, -apple-system, sans-serif !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Hide navigation bar, sidebars, system status links, edit buttons, action columns or info icon buttons */
+  aside,
+  header,
+  footer,
+  button,
+  .no-print,
+  .print-hidden,
+  [role="button"] {
+    display: none !important;
+  }
+
+  /* Remove sidebar column margin shift for primary layout wrapper */
+  main,
+  #main-content {
+    margin-left: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    background: transparent !important;
+    overflow: visible !important;
+  }
+
+  /* Expand primary main detail card content padding */
+  .max-w-\[1600px\] {
+    max-w: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Remove absolute modals/fixed backgrounds */
+  .fixed, .absolute {
+    position: relative !important;
+    inset: auto !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* Format Cards as solid white blocks with simple borders */
+  .rounded-xl, .shadow-sm, .shadow-md, .shadow-xl {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    border: none !important;
+  }
+
+  /* Force headers and key sections to avoid broken page transitions */
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+    break-after: avoid;
+    color: #0f172a !important;
+    margin-top: 1.5rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  /* Create a page break before main subsections for whitepaper readability */
+  .print-page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  /* Avoid row split across pages */
+  tr, .print-avoid-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  tbody {
+    page-break-inside: avoid;
+  }
+
+  /* Make tables display clearly on print */
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    page-break-inside: auto;
+    margin-top: 1rem !important;
+    margin-bottom: 2rem !important;
+  }
+
+  th, td {
+    border: 1.5px solid #cbd5e1 !important;
+    padding: 8px 12px !important;
+    text-align: left !important;
+    background: transparent !important;
+    color: #1e293b !important;
+    font-size: 9pt !important;
+  }
+
+  /* Highlight table headers subtly */
+  th {
+    font-weight: 700 !important;
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+  }
+
+  /* Restore text-wrapping instead of truncations/scrolling on hardcopy */
+  .truncate, .overflow-x-auto, .text-ellipsis {
+    overflow: visible !important;
+    white-space: normal !important;
+    text-overflow: clip !important;
+    max-width: none !important;
+  }
+
+  /* Style bullet lists correctly */
+  ul, ol {
+    padding-left: 1.5rem !important;
+  }
+
+  /* Convert status link elements into simple inline bracket URLs */
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 8pt;
+    color: #64748b;
+  }
+
+  /* Except for relative paths, skip browser address additions */
+  a[href^="/"]::after, a[href^="#"]::after {
+    content: "";
+  }
+
+  /* Make sure flag tags render correctly */
+  .inline-flex {
+    display: inline-flex !important;
+  }
+
+  /* Keep categories of data labels nicely structured */
+  .bg-slate-50, .bg-slate-100 {
+    background-color: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+  }
+}
+

@@ -1,0 +1,31 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=trust_user
+      - DB_PASSWORD=trust_password
+      - DB_NAME=trust_center
+      - NODE_ENV=production
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+
+  db:
+    image: mariadb:latest
+    environment:
+      - MARIADB_ROOT_PASSWORD=root_password
+      - MARIADB_DATABASE=trust_center
+      - MARIADB_USER=trust_user
+      - MARIADB_PASSWORD=trust_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+volumes:
+  mariadb_data:
