@@ -1,13 +1,18 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { pool, initDb, mysqlPool } from './server/db.js';
 import authRoutes from './server/routes/auth.js';
 import adminRoutes from './server/routes/admin.js';
+import { escapeHtml, sanitizeUrl } from './server/utils/html.js';
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  
+  app.set('trust proxy', 1);
 
   // Initialize Database
   try {
@@ -22,11 +27,28 @@ async function startServer() {
 
   app.use(express.json());
   app.use(cookieParser());
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    frameguard: false,
+  }));
 
-  // Serve static files from public directory
-  app.use('/uploads', express.static('public/uploads'));
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    message: { error: 'Too many requests, please try again after 15 minutes' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: false
+  });
+
+  // Serve static files from public directory with nosniff
+  app.use('/uploads', (req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    next();
+  }, express.static('public/uploads'));
 
   // API Routes
+  app.use('/api', apiLimiter);
   app.use('/api/auth', authRoutes);
   app.use('/api/admin', adminRoutes);
 
@@ -189,7 +211,7 @@ async function startServer() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="paper-size" content="A4">
-  <title>${product.name} - Compliance &amp; Security Whitepaper</title>
+  <title>${escapeHtml(product.name)} - Compliance &amp; Security Whitepaper</title>
   
   <!-- Typography CDN -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -533,8 +555,8 @@ async function startServer() {
   <div class="screen-wrapper">
     <!-- Browser-Only Top Controls -->
     <div class="screen-controls">
-      <a href="/product/${slug}" class="btn-back">
-        ← Back to ${product.name} Registry
+      <a href="/product/${escapeHtml(slug)}" class="btn-back">
+        ← Back to ${escapeHtml(product.name)} Registry
       </a>
       <button onclick="window.print()" class="btn-print">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
@@ -546,7 +568,7 @@ async function startServer() {
       <!-- Official PDF Document Running Header (visible during print) -->
       <div class="print-official-header">
         <div class="header-content">
-          <span class="company-name">${siteName}</span>
+          <span class="company-name">${escapeHtml(siteName)}</span>
           <span class="doc-reference">Official Security &amp; Compliance Whitepaper</span>
         </div>
       </div>
@@ -555,12 +577,12 @@ async function startServer() {
       <div class="cover-band" style="position: relative;">
         ${siteLogo ? `
         <div style="position: absolute; top: 18px; right: 24px; display: flex; align-items: center; justify-content: flex-end;">
-          <img src="${siteLogo}" alt="${siteName} Logo" style="max-height: 48px; max-width: 140px; object-fit: contain;" referrerPolicy="no-referrer" />
+          <img src="${sanitizeUrl(siteLogo)}" alt="${escapeHtml(siteName)} Logo" style="max-height: 48px; max-width: 140px; object-fit: contain;" referrerPolicy="no-referrer" />
         </div>
         ` : ''}
-        <div style="font-size: 8.5pt; font-weight: 700; letter-spacing: 0.15em; color: var(--primary); margin-bottom: 8px; max-width: 75%;">${siteName.toUpperCase()}</div>
-        <h1 style="max-width: 75%;">${product.name}</h1>
-        <div style="font-size: 12pt; font-weight: 500; color: var(--text-muted); margin-top: 4px; max-width: 75%;">${product.category || 'Compliance &amp; Security Registry'}</div>
+        <div style="font-size: 8.5pt; font-weight: 700; letter-spacing: 0.15em; color: var(--primary); margin-bottom: 8px; max-width: 75%;">${escapeHtml(siteName).toUpperCase()}</div>
+        <h1 style="max-width: 75%;">${escapeHtml(product.name)}</h1>
+        <div style="font-size: 12pt; font-weight: 500; color: var(--text-muted); margin-top: 4px; max-width: 75%;">${escapeHtml(product.category || 'Compliance &amp; Security Registry')}</div>
       </div>
 
       <!-- General & Office Overview -->
@@ -570,19 +592,19 @@ async function startServer() {
           <div style="background-color: #fafbfc; border: 1px solid var(--border-color); padding: 12px; border-radius: 4px;">
             <strong style="color: var(--primary); font-size: 9pt; display: block; margin-bottom: 4px;">Office Location</strong>
             <p style="margin: 0; font-size: 8.5pt; color: var(--text-dark); line-height: 1.4; text-align: left; whitespace: pre-wrap;">
-              ${general.office_location || '<span style="color: #94a3b8; font-style: italic;">No office location listed.</span>'}
+              ${general.office_location ? escapeHtml(general.office_location) : '<span style="color: #94a3b8; font-style: italic;">No office location listed.</span>'}
             </p>
           </div>
           <div style="background-color: #fafbfc; border: 1px solid var(--border-color); padding: 12px; border-radius: 4px;">
             <strong style="color: var(--primary); font-size: 9pt; display: block; margin-bottom: 4px;">Contact Channels</strong>
             <p style="margin: 0; font-size: 8.5pt; color: var(--text-dark); line-height: 1.4; text-align: left; whitespace: pre-wrap;">
-              ${general.contact_info || '<span style="color: #94a3b8; font-style: italic;">No contact information listed.</span>'}
+              ${general.contact_info ? escapeHtml(general.contact_info) : '<span style="color: #94a3b8; font-style: italic;">No contact information listed.</span>'}
             </p>
           </div>
           <div style="background-color: #fafbfc; border: 1px solid var(--border-color); padding: 12px; border-radius: 4px;">
             <strong style="color: var(--primary); font-size: 9pt; display: block; margin-bottom: 4px;">Opening Hours</strong>
             <p style="margin: 0; font-size: 8.5pt; color: var(--text-dark); line-height: 1.4; text-align: left; whitespace: pre-wrap;">
-              ${general.opening_hours || '<span style="color: #94a3b8; font-style: italic;">No opening hours listed.</span>'}
+              ${general.opening_hours ? escapeHtml(general.opening_hours) : '<span style="color: #94a3b8; font-style: italic;">No opening hours listed.</span>'}
             </p>
           </div>
         </div>
@@ -595,7 +617,7 @@ async function startServer() {
           <div style="background-color: #fafbfc; border: 1px solid var(--border-color); padding: 10px 12px; border-radius: 4px;">
             <strong style="color: var(--primary); font-size: 9pt; display: block; margin-bottom: 2px;">Backup &amp; Recovery</strong>
             <p style="margin: 0; font-size: 8.5pt; color: var(--text-dark); line-height: 1.35;">
-              ${security.backup || 'No information provided.'}
+              ${security.backup ? escapeHtml(security.backup) : 'No information provided.'}
             </p>
           </div>
           <div style="background-color: #fafbfc; border: 1px solid var(--border-color); padding: 10px 12px; border-radius: 4px;">
@@ -607,7 +629,7 @@ async function startServer() {
           <div style="background-color: #fafbfc; border: 1px solid var(--border-color); padding: 10px 12px; border-radius: 4px;">
             <strong style="color: var(--primary); font-size: 9pt; display: block; margin-bottom: 2px;">Encryption</strong>
             <p style="margin: 0; font-size: 8.5pt; color: var(--text-dark); line-height: 1.35;">
-              ${security.encryption || 'No information provided.'}
+              ${security.encryption ? escapeHtml(security.encryption) : 'No information provided.'}
             </p>
           </div>
           <div style="background-color: #fafbfc; border: 1px solid var(--border-color); padding: 10px 12px; border-radius: 4px;">
@@ -619,13 +641,13 @@ async function startServer() {
           <div style="background-color: #fafbfc; border: 1px solid var(--border-color); padding: 10px 12px; border-radius: 4px;">
             <strong style="color: var(--primary); font-size: 9pt; display: block; margin-bottom: 2px;">Data Residency</strong>
             <p style="margin: 0; font-size: 8.5pt; color: var(--text-dark); line-height: 1.35;">
-              ${security.data_residency || 'No information provided.'}
+              ${security.data_residency ? escapeHtml(security.data_residency) : 'No information provided.'}
             </p>
           </div>
           <div style="background-color: #fafbfc; border: 1px solid var(--border-color); padding: 10px 12px; border-radius: 4px;">
             <strong style="color: var(--primary); font-size: 9pt; display: block; margin-bottom: 2px;">SLA Uptime</strong>
             <p style="margin: 0; font-size: 8.5pt; color: var(--text-dark); line-height: 1.35;">
-              ${security.sla_uptime || 'No information provided.'}
+              ${security.sla_uptime ? escapeHtml(security.sla_uptime) : 'No information provided.'}
             </p>
           </div>
         </div>
@@ -639,17 +661,17 @@ async function startServer() {
             ${controls.map((ctrl: any) => `
               <div class="control-card">
                 <div class="control-header">
-                  <span class="control-title">${formatTopicName(ctrl.topic_id)}</span>
+                  <span class="control-title">${escapeHtml(formatTopicName(ctrl.topic_id))}</span>
                   <span class="control-badge ${
                     ctrl.status === 'Implemented' ? 'badge-implemented' : 
                     ctrl.status === 'Partial' ? 'badge-partial' : 
                     'badge-not-implemented'
                   }">
-                    ${ctrl.status}
+                    ${escapeHtml(ctrl.status)}
                   </span>
                 </div>
                 <p class="control-desc" style="margin-bottom: 0;">
-                  ${ctrl.description || 'No description provided.'}
+                  ${ctrl.description ? escapeHtml(ctrl.description) : 'No description provided.'}
                 </p>
               </div>
             `).join('')}
@@ -673,8 +695,8 @@ async function startServer() {
             <tbody>
               ${certs.map((cert: any) => `
                 <tr>
-                  <td><strong>${cert.name}</strong></td>
-                  <td>${cert.issuer || '<span style="color: #94a3b8; font-style: italic;">Not specified</span>'}</td>
+                  <td><strong>${escapeHtml(cert.name)}</strong></td>
+                  <td>${cert.issuer ? escapeHtml(cert.issuer) : '<span style="color: #94a3b8; font-style: italic;">Not specified</span>'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -698,8 +720,8 @@ async function startServer() {
             <tbody>
               ${policies.map((pol: any) => `
                 <tr>
-                  <td><strong>${pol.name}</strong></td>
-                  <td>${pol.version || '<span style="color: #94a3b8; font-style: italic;">Not specified</span>'}</td>
+                  <td><strong>${escapeHtml(pol.name)}</strong></td>
+                  <td>${pol.version ? escapeHtml(pol.version) : '<span style="color: #94a3b8; font-style: italic;">Not specified</span>'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -723,8 +745,8 @@ async function startServer() {
             <tbody>
               ${legalDocs.map((doc: any) => `
                 <tr>
-                  <td><strong>${getLegalDocName(doc.document_type)}</strong></td>
-                  <td>${doc.version || '<span style="color: #94a3b8; font-style: italic;">Not specified</span>'}</td>
+                  <td><strong>${escapeHtml(getLegalDocName(doc.document_type))}</strong></td>
+                  <td>${doc.version ? escapeHtml(doc.version) : '<span style="color: #94a3b8; font-style: italic;">Not specified</span>'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -752,16 +774,16 @@ async function startServer() {
               ${subprocessorsWithCountries.map((sub: any) => `
                 <tr>
                   <td>
-                    <strong>${sub.name}</strong>
-                    ${sub.contact_details ? `<div style="font-size: 8pt; color: var(--text-muted); margin-top: 4px;">${sub.contact_details}</div>` : ''}
+                    <strong>${escapeHtml(sub.name)}</strong>
+                    ${sub.contact_details ? `<div style="font-size: 8pt; color: var(--text-muted); margin-top: 4px;">${escapeHtml(sub.contact_details)}</div>` : ''}
                   </td>
                   <td>
-                    ${sub.region}
-                    ${sub.countries && sub.countries.length > 0 ? `<div style="font-size: 8pt; color: var(--text-muted); margin-top: 2px;">${sub.countries.join(', ').toUpperCase()}</div>` : ''}
+                    ${escapeHtml(sub.region)}
+                    ${sub.countries && sub.countries.length > 0 ? `<div style="font-size: 8pt; color: var(--text-muted); margin-top: 2px;">${escapeHtml(sub.countries.join(', ')).toUpperCase()}</div>` : ''}
                   </td>
-                  <td>${sub.nature_of_processing || sub.category || 'Not specified'}</td>
-                  <td>${sub.purpose || 'Not specified'}</td>
-                  <td>${sub.certifications || '<span style="color: #94a3b8; font-style: italic;">None</span>'}</td>
+                  <td>${escapeHtml(sub.nature_of_processing || sub.category || 'Not specified')}</td>
+                  <td>${escapeHtml(sub.purpose || 'Not specified')}</td>
+                  <td>${sub.certifications ? escapeHtml(sub.certifications) : '<span style="color: #94a3b8; font-style: italic;">None</span>'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -773,8 +795,8 @@ async function startServer() {
 
       <!-- Page Footer -->
       <footer class="page-footer" style="margin-top: auto;">
-        <span>${product.name} Compliance &amp; Security | ${siteName}</span>
-        <span>Generated: ${dateStr}</span>
+        <span>${escapeHtml(product.name)} Compliance &amp; Security | ${escapeHtml(siteName)}</span>
+        <span>Generated: ${escapeHtml(dateStr)}</span>
       </footer>
     </div>
   </div>

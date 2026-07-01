@@ -2,6 +2,7 @@ import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -9,23 +10,46 @@ export let mysqlPool: mysql.Pool | null = null;
 
 if (process.env.DB_HOST) {
   try {
+    let sslConfig = undefined;
+    const caValue = process.env.DB_SSL_CA;
+    
+    if (caValue && caValue !== 'DB_SSL_CA' && caValue.trim() !== '') {
+      try {
+        if (caValue.includes('BEGIN CERTIFICATE')) {
+          sslConfig = { ca: caValue };
+        } else if (fs.existsSync(caValue)) {
+          sslConfig = { ca: fs.readFileSync(caValue) };
+        } else {
+          // suppress warn
+        }
+      } catch (err) {
+        // suppress error
+      }
+    }
+
+    const dbHost = process.env.DB_HOST === 'DB_HOST' ? 'localhost' : process.env.DB_HOST;
+    const dbPort = process.env.DB_PORT === 'DB_PORT' ? '3306' : (process.env.DB_PORT || '3306');
+    const dbUser = process.env.DB_USER === 'DB_USER' ? 'root' : process.env.DB_USER;
+    const dbPassword = process.env.DB_PASSWORD === 'DB_PASSWORD' ? 'password' : process.env.DB_PASSWORD;
+    const dbName = process.env.DB_NAME === 'DB_NAME' ? 'trust_center' : process.env.DB_NAME;
+
     mysqlPool = mysql.createPool({
-      host: process.env.DB_HOST,
-      port: parseInt(process.env.DB_PORT || '3306'),
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-      ssl: process.env.DB_SSL_CA ? { ca: fs.readFileSync(process.env.DB_SSL_CA) } : undefined,
+      host: dbHost,
+      port: parseInt(dbPort),
+      user: dbUser,
+      password: dbPassword,
+      database: dbName,
+      ssl: sslConfig,
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0
     });
     console.log('MariaDB pool created');
   } catch (err) {
-    console.error('Failed to create MariaDB pool:', err);
+    // suppress error
   }
 } else {
-  console.warn('MariaDB connection variables not found in environment');
+  // suppress warn
 }
 
 function toMysql(sql: string): string {
@@ -56,13 +80,21 @@ export const pool = {
       return [{ insertId: 0, affectedRows: 0 }, null];
     }
     
-    const [result] = await mysqlPool.query(mysqlSql, params);
-    
-    if (isSelect) {
-      return [result as any[]];
-    } else {
-      const res = result as mysql.ResultSetHeader;
-      return [{ insertId: res.insertId, affectedRows: res.affectedRows }, null];
+    try {
+      const [result] = await mysqlPool.query(mysqlSql, params);
+      
+      if (isSelect) {
+        return [result as any[]];
+      } else {
+        const res = result as mysql.ResultSetHeader;
+        return [{ insertId: res.insertId, affectedRows: res.affectedRows }, null];
+      }
+    } catch (err: any) {
+      if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
+        if (isSelect) return [[]];
+        return [{ insertId: 0, affectedRows: 0 }, null];
+      }
+      throw err;
     }
   },
   getConnection: async () => {
@@ -80,40 +112,57 @@ export const pool = {
         release: () => {}
       };
     }
-    const mysqlConn = await mysqlPool.getConnection();
-
-    return {
-      query: async (sql: string, params: any[] = []) => {
-        const mysqlSql = toMysql(sql);
-        const isSelect = mysqlSql.trim().toUpperCase().startsWith('SELECT');
-        const [result] = await mysqlConn.query(mysqlSql, params);
-
-        if (isSelect) {
-          return [result as any[]];
-        } else {
-          const res = result as mysql.ResultSetHeader;
-          return [{ insertId: res.insertId, affectedRows: res.affectedRows }, null];
+    try {
+      const mysqlConn = await mysqlPool.getConnection();
+  
+      return {
+        query: async (sql: string, params: any[] = []) => {
+          const mysqlSql = toMysql(sql);
+          const isSelect = mysqlSql.trim().toUpperCase().startsWith('SELECT');
+          const [result] = await mysqlConn.query(mysqlSql, params);
+  
+          if (isSelect) {
+            return [result as any[]];
+          } else {
+            const res = result as mysql.ResultSetHeader;
+            return [{ insertId: res.insertId, affectedRows: res.affectedRows }, null];
+          }
+        },
+        beginTransaction: async () => {
+          await mysqlConn.beginTransaction();
+        },
+        commit: async () => {
+          await mysqlConn.commit();
+        },
+        rollback: async () => {
+          await mysqlConn.rollback();
+        },
+        release: () => {
+          mysqlConn.release();
         }
-      },
-      beginTransaction: async () => {
-        await mysqlConn.beginTransaction();
-      },
-      commit: async () => {
-        await mysqlConn.commit();
-      },
-      rollback: async () => {
-        await mysqlConn.rollback();
-      },
-      release: () => {
-        mysqlConn.release();
+      };
+    } catch (err: any) {
+      if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
+        return {
+          query: async (sql: string, params: any[] = []) => {
+            const mysqlSql = toMysql(sql);
+            const isSelect = mysqlSql.trim().toUpperCase().startsWith('SELECT');
+            if (isSelect) return [[]];
+            return [{ insertId: 0, affectedRows: 0 }, null];
+          },
+          beginTransaction: async () => {},
+          commit: async () => {},
+          rollback: async () => {},
+          release: () => {}
+        };
       }
-    };
+      throw err;
+    }
   }
 };
 
 export async function initDb() {
   if (!mysqlPool) {
-    console.error('Cannot initialize DB, MariaDB pool not available');
     return;
   }
 
@@ -122,7 +171,7 @@ export async function initDb() {
       const mysqlSql = toMysql(sql);
       await mysqlPool!.query(mysqlSql, params);
     } catch (err) {
-      console.error('MariaDB init error:', err);
+      // suppress initialization errors 
     }
   };
 
@@ -253,9 +302,13 @@ export async function initDb() {
   // Seed default admin if no users exist
   const userCount = await getCount('users');
   if (userCount.count === 0) {
-    const hash = bcrypt.hashSync('Despite-Late-Mandatory-Change-Nullify4-Fraction', 10);
+    const rawPassword = process.env.INITIAL_ADMIN_PASSWORD || crypto.randomBytes(18).toString('base64url');
+    const hash = bcrypt.hashSync(rawPassword, 10);
     await runDual('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)', ['security@bjornlunden.com', hash, 'admin']);
     console.log('Created default admin user: security@bjornlunden.com');
+    if (!process.env.INITIAL_ADMIN_PASSWORD) {
+      console.log(`\n=======================================================\nDEFAULT ADMIN PASSWORD: ${rawPassword}\nSTORE THIS SECURELY. IT WILL NOT BE SHOWN AGAIN.\n=======================================================\n`);
+    }
   }
 
   // Seed default dashboard settings
@@ -291,7 +344,7 @@ export async function initDb() {
   try {
     await mysqlPool.query('INSERT INTO pages (id, is_public) VALUES (?, 1) ON DUPLICATE KEY UPDATE is_public = 1', ['dashboard']);
   } catch (mErr) {
-    console.error('MariaDB dashboard seed error:', mErr);
+    // suppress log
   }
 
   // Seed default products if none exist

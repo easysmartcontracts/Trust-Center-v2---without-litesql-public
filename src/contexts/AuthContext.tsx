@@ -49,8 +49,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const getAuthHeaders = () => {
     const token = user?.token || localStorage.getItem('auth_token');
-    if (!token || token === 'undefined' || token === 'null') return {};
-    return { 'Authorization': `Bearer ${token}` };
+    const headers: Record<string, string> = {};
+    if (token && token !== 'undefined' && token !== 'null') {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const getCookie = (name: string) => {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop()?.split(';').shift();
+      return undefined;
+    };
+    const csrfToken = getCookie('csrf_token');
+    if (csrfToken) {
+      headers['x-csrf-token'] = csrfToken;
+    }
+    return headers;
   };
 
   const refreshPublicPages = async () => {

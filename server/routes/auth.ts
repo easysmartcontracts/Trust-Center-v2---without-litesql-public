@@ -1,10 +1,12 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { pool } from '../db.js';
+import { getJwtSecret } from '../utils/secret.js';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
+const JWT_SECRET = getJwtSecret();
 
 // In-memory store for tracking failed login attempts
 const loginAttempts = new Map<string, { count: number, lockUntil: number }>();
@@ -48,9 +50,18 @@ router.post('/login', async (req, res) => {
   const expiresIn = rememberMe ? '30d' : '1d';
   const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn });
   
+  const csrfToken = crypto.randomBytes(32).toString('hex');
   const maxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+  
   res.cookie('token', token, {
     httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    maxAge
+  });
+  
+  res.cookie('csrf_token', csrfToken, {
+    httpOnly: false, // Must be readable by client JS
     secure: true,
     sameSite: 'none',
     maxAge
@@ -61,6 +72,7 @@ router.post('/login', async (req, res) => {
 
 router.post('/logout', (req, res) => {
   res.clearCookie('token');
+  res.clearCookie('csrf_token');
   res.json({ success: true });
 });
 

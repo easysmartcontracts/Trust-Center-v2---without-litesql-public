@@ -5,9 +5,11 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { pool } from '../db.js';
+import { getJwtSecret } from '../utils/secret.js';
+import { csrfProtection } from '../middleware/csrf.js';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
+const JWT_SECRET = getJwtSecret();
 
 // Configure multer for logo uploads
 const storage = multer.diskStorage({
@@ -28,13 +30,13 @@ const upload = multer({
   storage,
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|svg|webp/;
+    const allowedTypes = /jpeg|jpg|png|webp/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
     if (extname && mimetype) {
       return cb(null, true);
     }
-    cb(new Error('Only images are allowed (jpeg, jpg, png, svg, webp)'));
+    cb(new Error('Only images are allowed (jpeg, jpg, png, webp)'));
   }
 });
 
@@ -85,20 +87,15 @@ const requireAdminOrMod = (req: any, res: any, next: any) => {
   if (token === 'undefined' || token === 'null') {
     token = null;
   }
-
-  console.log('Admin Middleware - Token present:', !!token);
   
   if (!token) {
-    console.log('Admin Middleware - No valid token found');
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
-    console.log('Admin Middleware - Decoded user:', decoded.username, 'Role:', decoded.role);
     
     if (decoded.role !== 'admin' && decoded.role !== 'moderator') {
-      console.log('Admin Middleware - Access denied for role:', decoded.role);
       return res.status(403).json({ error: 'Forbidden' });
     }
     req.user = decoded;
@@ -111,6 +108,7 @@ const requireAdminOrMod = (req: any, res: any, next: any) => {
   }
 };
 
+router.use(csrfProtection);
 router.use(requireAdminOrMod);
 
 // Get all users

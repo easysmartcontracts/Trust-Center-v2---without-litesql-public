@@ -376,7 +376,7 @@ export function AdminKPI() {
                     {m.user_email || <span className="text-slate-400 italic">Unknown / Public</span>}
                   </td>
                   <td className="px-6 py-3">
-                    <Badge variant={m.event_type.startsWith('request_') ? 'default' : 'secondary'} className="bg-blue-50 text-blue-700">
+                    <Badge className="bg-blue-50 text-blue-700">
                       {m.event_type.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                     </Badge>
                   </td>
